@@ -30,8 +30,5 @@ services:
       # Switch to "local" if you upgrade to a paid instance type later.
       - key: NLI_BACKEND
         value: llm
-      # Placeholder — update once the frontend is deployed and you know its
-      # real URL (Render dashboard → this service → Environment → edit → save,
-      # which auto-redeploys).
       - key: CORS_ORIGINS
-        value: '["http://localhost:5173"]'
+        value: '["https://veri-nexus.vercel.app","http://localhost:5173"]'
