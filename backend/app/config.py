@@ -28,6 +28,12 @@ class Settings(BaseSettings):
     # ---------------------------------------------------------------- storage
     MONGODB_URI: str = ""
     MONGODB_DB: str = "verinexus"
+
+    # ---------------------------------------------------------------- auth
+    # Raw or base64-encoded Firebase service account JSON. Leave blank to
+    # disable auth entirely (every request is treated as anonymous) — this
+    # keeps local dev working without a Firebase project.
+    FIREBASE_SERVICE_ACCOUNT_JSON: str = ""
     CHROMA_DIR: str = "./data/chroma"
     UPLOAD_DIR: str = "./data/uploads"
 

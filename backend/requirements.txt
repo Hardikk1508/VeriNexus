@@ -24,3 +24,6 @@ tavily-python>=0.5.0
 
 # ---- audit persistence (only needed when MONGODB_URI is set) ----
 pymongo>=4.9.0
+
+# ---- auth (only needed when FIREBASE_SERVICE_ACCOUNT_JSON is set) ----
+firebase-admin>=6.5.0

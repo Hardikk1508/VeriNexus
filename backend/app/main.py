@@ -18,12 +18,14 @@ import tempfile
 import uuid
 from typing import Any, Dict, List
 
-from fastapi import FastAPI, File, Form, HTTPException, UploadFile
+from fastapi import Depends, FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 
 from app import audit, graph
 from app.config import settings
+from app.core import auth as fb_auth
+from app.core.auth import require_user
 from app.schemas import ResearchRequest
 
 logging.basicConfig(
@@ -62,6 +64,7 @@ def health():
         "model": settings.GROQ_MODEL,
         "nli_backend": settings.NLI_BACKEND,
         "audit_persistence": audit.db() is not None,
+        "auth_enabled": fb_auth.enabled(),
         "missing_config": settings.validate(),
     }
 
@@ -70,7 +73,11 @@ def health():
 
 
 @app.post("/api/upload")
-async def upload(session_id: str = Form(...), file: UploadFile = File(...)):
+async def upload(
+    session_id: str = Form(...),
+    file: UploadFile = File(...),
+    user: dict = Depends(require_user),
+):
     if not (file.filename or "").lower().endswith(".pdf"):
         raise HTTPException(400, "Only PDF uploads are supported in this version.")
     dest = os.path.join(UPLOAD_DIR, f"{uuid.uuid4().hex}.pdf")
@@ -106,7 +113,7 @@ def _run_blocking(req: ResearchRequest) -> Dict[str, Any]:
 
 
 @app.post("/api/research")
-async def research(req: ResearchRequest):
+async def research(req: ResearchRequest, user: dict = Depends(require_user)):
     if settings.validate() and not settings.GROQ_API_KEY:
         raise HTTPException(500, "GROQ_API_KEY is not configured on the server.")
     try:
@@ -139,9 +146,14 @@ def _stage_payload(node: str, update: Dict[str, Any]) -> Dict[str, Any]:
 
 
 @app.get("/api/research/stream")
-async def research_stream(q: str, session_id: str = "", max_repair_rounds: int = -1):
+async def research_stream(
+    q: str, session_id: str = "", max_repair_rounds: int = -1, token: str = ""
+):
     if len(q.strip()) < 8:
         raise HTTPException(400, "Query is too short.")
+    # EventSource (browser SSE client) cannot send custom headers, so the ID
+    # token travels as a query param here instead of Authorization.
+    fb_auth.verify_token(token)
 
     sid = session_id or uuid.uuid4().hex
     rounds = None if max_repair_rounds < 0 else max_repair_rounds
@@ -197,12 +209,12 @@ async def research_stream(q: str, session_id: str = "", max_repair_rounds: int =
 
 
 @app.get("/api/runs")
-def runs(limit: int = 25):
+def runs(limit: int = 25, user: dict = Depends(require_user)):
     return {"runs": audit.list_runs(limit)}
 
 
 @app.get("/api/runs/{session_id}")
-def run_detail(session_id: str):
+def run_detail(session_id: str, user: dict = Depends(require_user)):
     doc = audit.get_run(session_id)
     if not doc:
         raise HTTPException(404, "No stored run with that session id.")
@@ -210,7 +222,13 @@ def run_detail(session_id: str):
 
 
 @app.post("/api/runs/{session_id}/review")
-def review(session_id: str, reviewer: str = Form(...), decision: str = Form(...), note: str = Form("")):
+def review(
+    session_id: str,
+    reviewer: str = Form(...),
+    decision: str = Form(...),
+    note: str = Form(""),
+    user: dict = Depends(require_user),
+):
     if decision not in ("approved", "rejected", "needs_edit"):
         raise HTTPException(400, "decision must be approved, rejected, or needs_edit")
     ok = audit.record_review(session_id, reviewer, decision, note)

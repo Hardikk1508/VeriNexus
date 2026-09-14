@@ -1,5 +1,9 @@
 import { useEffect, useRef, useState } from "react";
+import { onAuthStateChanged, signOut } from "firebase/auth";
 import { getHealth, streamResearch, uploadDocument } from "./api";
+import { auth, authConfigured } from "./firebase";
+import AuthPage from "./AuthPage";
+import Backdrop from "./Backdrop";
 
 const BANDS = {
   VERIFIED: { fg: "#16794a", bg: "var(--verified-bg)", grad: "linear-gradient(135deg,#22a35f,#15803d)", glow: "rgba(21,128,61,0.35)" },
@@ -35,65 +39,22 @@ function phaseFromStages(stages) {
   return "plan";
 }
 
-const PARTICLES = Array.from({ length: 22 }, () => ({
-  left: Math.random() * 100,
-  delay: Math.random() * 16,
-  duration: 10 + Math.random() * 10,
-  size: 2 + Math.random() * 2,
-}));
-
-/** Full-screen fixed 3D scene: perspective grid plane + drifting glow blobs + rising
- *  particles. Always animating; color and speed react to the same pipeline state as
- *  the status orb, so the whole page feels like one live system, not decoration. */
-function Backdrop({ running, stages, result }) {
-  let c1, c2;
+/** Computes the shared color pair used by both the backdrop and the status orb,
+ *  from the same pipeline state — keeps the two visuals in sync. */
+function pipelineColors(running, stages, result) {
   if (result) {
     const s = bandStyle(result.band, result.conflicted);
-    c1 = s.fg;
-    c2 = s.fg;
-  } else if (running) {
-    [c1, c2] = PHASE_COLORS[phaseFromStages(stages)] || PHASE_COLORS.idle;
-  } else {
-    [c1, c2] = PHASE_COLORS.idle;
+    return [s.fg, s.fg];
   }
-  return (
-    <div className={`backdrop${running ? " busy" : ""}`} style={{ "--bd-color": c1, "--bd-color-2": c2 }} aria-hidden="true">
-      <div className="backdrop-grid-wrap"><div className="backdrop-grid" /></div>
-      <div className="backdrop-glow g1" />
-      <div className="backdrop-glow g2" />
-      <div className="backdrop-glow g3" />
-      <div className="backdrop-particles">
-        {PARTICLES.map((p, i) => (
-          <span
-            key={i}
-            className="backdrop-particle"
-            style={{
-              left: `${p.left}%`,
-              bottom: "-10px",
-              width: p.size,
-              height: p.size,
-              animationDuration: `${p.duration}s`,
-              animationDelay: `${-p.delay}s`,
-            }}
-          />
-        ))}
-      </div>
-    </div>
-  );
+  if (running) {
+    return PHASE_COLORS[phaseFromStages(stages)] || PHASE_COLORS.idle;
+  }
+  return PHASE_COLORS.idle;
 }
 
 /** Persistent 3D orbit — idles forever, speeds up while running, settles to the verdict color when done. */
 function StatusOrb({ running, stages, result }) {
-  let c1, c2;
-  if (result) {
-    const s = bandStyle(result.band, result.conflicted);
-    c1 = s.fg;
-    c2 = s.fg;
-  } else if (running) {
-    [c1, c2] = PHASE_COLORS[phaseFromStages(stages)] || PHASE_COLORS.idle;
-  } else {
-    [c1, c2] = PHASE_COLORS.idle;
-  }
+  const [c1, c2] = pipelineColors(running, stages, result);
   return (
     <div
       className={`orb-wrap${running ? " busy" : ""}`}
@@ -450,11 +411,22 @@ export default function App() {
   const [tick, setTick] = useState(Date.now());
   const [liveClaims, setLiveClaims] = useState([]);
   const [liveSources, setLiveSources] = useState([]);
+  const [user, setUser] = useState(null);
+  const [authLoading, setAuthLoading] = useState(true);
   const abortRef = useRef(null);
   const fileInputRef = useRef(null);
 
   useEffect(() => {
     getHealth().then(setHealth).catch(() => setHealth({ status: "unreachable" }));
+  }, []);
+
+  useEffect(() => {
+    if (!authConfigured) {
+      setUser({ uid: "anonymous" });
+      setAuthLoading(false);
+      return;
+    }
+    return onAuthStateChanged(auth, (u) => { setUser(u); setAuthLoading(false); });
   }, []);
 
   // rotate example placeholder while the box is empty
@@ -487,7 +459,7 @@ export default function App() {
     }
   }
 
-  function run() {
+  async function run() {
     if (query.trim().length < 8 || running) return;
     setRunning(true);
     setStages([]);
@@ -497,7 +469,7 @@ export default function App() {
     setLiveClaims([]);
     setLiveSources([]);
 
-    abortRef.current = streamResearch(query, {
+    abortRef.current = await streamResearch(query, {
       sessionId,
       onStage: (name, payload) => {
         setStages((s) => [...s, { name, ...payload, at: Date.now() }]);
@@ -522,13 +494,17 @@ export default function App() {
     setRunning(false);
   }
 
+  if (authLoading) return <Backdrop c1="#4db2e8" c2="#7c3aed" />;
+  if (!user) return <AuthPage />;
+
   const missing = health?.missing_config || [];
   const apiOk = health?.status === "ok";
   const sourcesToShow = result?.sources?.length ? result.sources : liveSources;
+  const [bdC1, bdC2] = pipelineColors(running, stages, result);
 
   return (
     <>
-      <Backdrop running={running} stages={stages} result={result} />
+      <Backdrop busy={running} c1={bdC1} c2={bdC2} />
       <div className="page">
       <div className="header-row">
         <div className="brand-mark">
@@ -551,6 +527,11 @@ export default function App() {
           </p>
         </div>
         <StatusOrb running={running} stages={stages} result={result} />
+        {authConfigured && (
+          <button className="btn-ghost sign-out-btn" onClick={() => signOut(auth)} title={user.email || "Sign out"}>
+            Sign out
+          </button>
+        )}
       </div>
 
       {missing.length > 0 && (
