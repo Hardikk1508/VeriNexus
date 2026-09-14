@@ -193,7 +193,17 @@ async def research_stream(
         yield _sse("open", {"session_id": sid})
 
         while True:
-            event, data = await queue.get()
+            try:
+                event, data = await asyncio.wait_for(queue.get(), timeout=12)
+            except asyncio.TimeoutError:
+                # A stage like "research" or "verify" can legitimately run well
+                # past a minute with zero bytes sent. Proxies in front of the
+                # server (Render's Cloudflare edge included) treat a silent
+                # connection as dead and kill it with a 502 — this comment
+                # line keeps traffic flowing without affecting the client's
+                # named-event parsing.
+                yield ": keep-alive\n\n"
+                continue
             if event == "__end__":
                 break
             yield _sse(event, data)
