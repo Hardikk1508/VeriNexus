@@ -1,0 +1,26 @@
+# ---- API ----
+fastapi>=0.115.0
+uvicorn[standard]>=0.32.0
+python-multipart>=0.0.12
+pydantic>=2.9.0
+pydantic-settings>=2.6.0
+
+# ---- agents ----
+langgraph>=0.2.40
+groq>=0.11.0
+
+# ---- retrieval ----
+chromadb>=0.5.20
+sentence-transformers>=3.3.0
+rank-bm25>=0.2.2
+
+# ---- verification (only needed when NLI_BACKEND=local) ----
+transformers>=4.46.0
+torch>=2.4.0
+
+# ---- documents & web ----
+PyMuPDF>=1.24.0
+tavily-python>=0.5.0
+
+# ---- audit persistence (only needed when MONGODB_URI is set) ----
+pymongo>=4.9.0
