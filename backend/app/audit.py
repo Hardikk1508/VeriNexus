@@ -24,7 +24,17 @@ def db():
     try:
         from pymongo import MongoClient
 
-        client = MongoClient(settings.MONGODB_URI, serverSelectionTimeoutMS=4000)
+        # serverSelectionTimeoutMS alone isn't enough — each shard connection
+        # attempt has its own connect/socket timeout (20s default) that can
+        # stack up across a 3-node replica set. Cap all three so a failing
+        # connection gives up in ~4s instead of blocking a worker thread for
+        # nearly a minute.
+        client = MongoClient(
+            settings.MONGODB_URI,
+            serverSelectionTimeoutMS=4000,
+            connectTimeoutMS=4000,
+            socketTimeoutMS=4000,
+        )
         client.admin.command("ping")
         _db = client[settings.MONGODB_DB]
         _db.runs.create_index("session_id")
