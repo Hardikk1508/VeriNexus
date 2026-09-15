@@ -32,3 +32,14 @@ services:
         value: llm
       - key: CORS_ORIGINS
         value: '["https://veri-nexus.vercel.app","http://localhost:5173"]'
+      # Trimmed for the free tier's weak shared CPU — same values already
+      # validated locally. Without these the pipeline runs on config.py's
+      # heavier defaults (5 sub-questions, 5 results/query, 2 repair rounds).
+      - key: MAX_SUB_QUESTIONS
+        value: "3"
+      - key: RESULTS_PER_QUERY
+        value: "3"
+      - key: DRAFT_CONTEXT_CHUNKS
+        value: "8"
+      - key: MAX_REPAIR_ROUNDS
+        value: "1"
