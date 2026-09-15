@@ -32,7 +32,9 @@ def get_store(session_id: str) -> EvidenceStore:
 
 
 def drop_store(session_id: str) -> None:
-    _STORES.pop(session_id, None)
+    store = _STORES.pop(session_id, None)
+    if store is not None:
+        store.close()
 
 
 class GraphState(TypedDict, total=False):

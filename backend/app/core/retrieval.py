@@ -69,6 +69,19 @@ class EvidenceStore:
         self._bm25 = None
         self._bm25_dirty = True
 
+    def close(self) -> None:
+        """Explicitly free the collection's native (non-GC'd) index memory.
+
+        A bare EphemeralClient() per session, left to Python's garbage collector,
+        does not reliably release Chroma's underlying HNSW index memory — on a
+        long-lived process this leaks a little on every request and eventually
+        OOMs. delete_collection() is the supported way to actually free it.
+        """
+        try:
+            self._client.delete_collection(self._col.name)
+        except Exception:  # noqa: BLE001
+            pass
+
     # ------------------------------------------------------------ writes
 
     def add(self, chunks: List[Chunk]) -> int:
